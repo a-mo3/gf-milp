@@ -8,11 +8,11 @@ from lib.ObjectiveTask import ObjectiveTask
 workforce = []
 
 for i in range(10):
-    workforce.append(Account(50, 1, 1))
+    workforce.append(Account(f"Mining_acc_{i}", 50, 1, 1))
 for i in range(25):
-    workforce.append(Account(1, 60, 1))
+    workforce.append(Account(f"Herblore_acc_{i}",1, 60, 1))
 for i in range(5):
-    workforce.append(Account(1, 1, 20))
+    workforce.append(Account(f"Chop_acc_{i}", 1, 1, 20))
 
 objective_tasks = [
     ObjectiveTask("ProfitMine", 30, 0, 0, 100, 5),
@@ -66,6 +66,7 @@ solver.Maximize(
 status = solver.Solve()
 
 for (w,j), var in assigned_ints.items():
-    print(f"{w} - {j}, {var.solution_value()}")
+    if var.solution_value() == 1:
+        print(f"Acc {workforce[w]} assigned to task {objective_tasks[j]}")
 
 print(f"Was optimal {pywraplp.Solver.OPTIMAL == status}")

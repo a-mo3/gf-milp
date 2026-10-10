@@ -13,3 +13,6 @@ class ObjectiveTask:
                 and account.herblore >= self.herb_req
                 and account.woodcutting >= self.woodcutting_req
         )
+
+    def __str__(self):
+        return self.name
