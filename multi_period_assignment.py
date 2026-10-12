@@ -9,6 +9,7 @@ from lib.Account import Account
 from lib.Skills import Skills
 from lib.Task import Task
 import pandas as pd
+import json
 
 
 class MultiPeriodAssignmentModel:
@@ -85,6 +86,19 @@ class MultiPeriodAssignmentModel:
                             >= getattr(task.skill_requirements, skill) * self.task_assignments[w, j, t]
                         )
 
+        # Team size constraint
+        for j, task in enumerate(self.tasks):
+            for t in range(self.periods):
+                active = self.solver.IntVar(0, 1, f"TaskActiveInPeriod_{task}_{t}")
+
+                team_size = self.solver.Sum(
+                    self.task_assignments[w, j, t] for w in range(len(self.workforce))
+                )
+
+                self.solver.Add(team_size >= task.required_team_size * active)
+                # when not active this forces team size to 0
+                self.solver.Add(team_size <= len(self.workforce) * active)
+
         # objective function
         self.solver.Maximize(
             self.solver.Sum(
@@ -124,14 +138,14 @@ task_db = [
         "Mining lowlvl",
         Skills(0, 0, 0),
         Skills(1, 0, 0),
-        10, 100_000
+        0, 100_000
     ),
     # higher lvl
     Task(
         "Mining highlvl",
         Skills(10, 0, 0),
         Skills(1, 0, 0),
-        50, 100_000
+        1, 100_000
     )
 ]
 
@@ -139,7 +153,7 @@ model = MultiPeriodAssignmentModel(24, accounts, task_db)
 solv = model.get_solver()
 print("Variables:", solv.NumVariables())
 print("Constraints:", solv.NumConstraints())
-solv.SetTimeLimit(300_000)
+solv.SetTimeLimit(600_000)
 solv.EnableOutput()
 
 start = time.perf_counter()
