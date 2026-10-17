@@ -1,15 +1,14 @@
 # here we model starting with x base accounts, and given market constraints and a set of methods find optimal training path
 # we do not consider any reward for training here other than levels
+import time
+
+import pandas as pd
 from ortools.linear_solver import pywraplp
 from ortools.linear_solver.pywraplp import Solver
-from prompt_toolkit.key_binding.bindings.named_commands import self_insert
 
-import time
 from lib.Account import Account
 from lib.Skills import Skills
 from lib.Task import Task
-import pandas as pd
-import json
 
 
 class MultiPeriodAssignmentModel:
