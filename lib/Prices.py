@@ -57,3 +57,10 @@ class LivePrices:
             }
 
         return self.cache[id]
+
+    def get_volume(self, id):
+        res = self.lookup(id)
+        return res["highPriceVolume"] + res["lowPriceVolume"]
+
+    def get_low_price(self, id):
+        return self.lookup(id)["avgLowPrice"]
