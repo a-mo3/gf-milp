@@ -4,6 +4,7 @@ import pandas as pd
 from ortools.linear_solver import pywraplp
 from ortools.linear_solver.pywraplp import Solver
 
+import item_ids
 from lib.Account import Account
 from lib.Prices import LivePrices
 from lib.Skills import Skills
@@ -42,7 +43,7 @@ class MultiPeriodAssignmentModel:
         self.lp = LivePrices()
         for item_id in self.items:
             vol = self.lp.get_volume(item_id)
-            print(f"Item {id} volume: {vol}")
+            print(f"Item {item_id} volume: {vol} ({vol/24}) price: {self.lp.get_low_price(item_id)}")
             # div 24 because 1 period is 1 hour in our model and lookup is 24h
             self.volumes[item_id] = vol / 24
 
@@ -50,39 +51,7 @@ class MultiPeriodAssignmentModel:
         self.sys_wide_production = {}
         self.sys_wide_consumption = {}
 
-        for item in self.items:
-            tier_capacity = 0.1 * self.volumes[item]
-            # production constraints apply to system wide production in a period
-            for t in range(self.periods):
-                self.sys_wide_net[item, t] = self.solver.NumVar(
-                    -self.solver.infinity(), self.solver.infinity(), f"system_wide_net_{item}_{t}"
-                )
-                # 3 tiers, 2 being 10% volume and 3rd being 0 reward and infinite capacity
-                for tier in range(3):
-                    upper = tier_capacity if tier < 2 else self.solver.infinity()
 
-                    self.sys_wide_production[item, t, tier] = self.solver.NumVar(
-                        0, upper, f"sys_wide_production_{item}_{t}_{tier}"
-                    )
-                    self.sys_wide_consumption[item, t, tier] = self.solver.NumVar(
-                        0, upper, f"sys_wide_consumption_{item}_{t}_{tier}"
-                    )
-
-                # net production must match that of the assignments
-                self.solver.Add(
-                    self.sys_wide_net[item, t] == self.solver.Sum(
-                        (task.production.get(item, 0) - task.consumption.get(item, 0))
-                        * self.task_assignments[w, j, t]
-                        for w in range(len(workforce))
-                        for j, task in enumerate(self.tasks)
-                    )
-                )
-                # net production and gross must be balanced
-                self.solver.Add(
-                    self.sys_wide_net[item, t]
-                    == self.solver.Sum(self.sys_wide_production[item, t, tier] for tier in range(3))
-                    - self.solver.Sum(self.sys_wide_consumption[item, t, tier] for tier in range(3))
-                )
 
         # eligibility decisions
         for w in range(len(self.workforce)):
@@ -156,16 +125,50 @@ class MultiPeriodAssignmentModel:
                 self.solver.Add(team_size <= len(self.workforce) * active)
 
         # we have 3 reward tiers, 100% price reward for 10% of volume, 80%, then very low
-        production_multipliers = (1, 0.8, 0.30)
+        production_multipliers = (1, 0.8, 0)
         # multipliers for system wide consumption each period
         consumption_multipliers = (1, 1.2, 2)
+
+        for item in self.items:
+            tier_capacity = 0.1 * self.volumes[item]
+            # production constraints apply to system wide production in a period
+            for t in range(self.periods):
+                self.sys_wide_net[item, t] = self.solver.NumVar(
+                    -self.solver.infinity(), self.solver.infinity(), f"system_wide_net_{item}_{t}"
+                )
+                # 3 tiers, 2 being 10% volume and 3rd being 0 reward and infinite capacity
+                for tier in range(3):
+                    upper = tier_capacity if tier < 2 else self.solver.infinity()
+
+                    self.sys_wide_production[item, t, tier] = self.solver.NumVar(
+                        0, upper, f"sys_wide_production_{item}_{t}_{tier}"
+                    )
+                    self.sys_wide_consumption[item, t, tier] = self.solver.NumVar(
+                        0, upper, f"sys_wide_consumption_{item}_{t}_{tier}"
+                    )
+
+                # net production must match that of the assignments
+                self.solver.Add(
+                    self.sys_wide_net[item, t] == self.solver.Sum(
+                        (task.production.get(item, 0) - task.consumption.get(item, 0))
+                        * self.task_assignments[w, j, t]
+                        for w in range(len(workforce))
+                        for j, task in enumerate(self.tasks)
+                    )
+                )
+                # net production and gross must be balanced
+                self.solver.Add(
+                    self.sys_wide_net[item, t]
+                    == self.solver.Sum(self.sys_wide_production[item, t, tier] for tier in range(3))
+                    - self.solver.Sum(self.sys_wide_consumption[item, t, tier] for tier in range(3))
+                )
 
         # objective function
         self.solver.Maximize(
             self.solver.Sum(
                 self.lp.get_low_price(item) * (
-                    production_multipliers[tier] * self.sys_wide_production[item, t, tier]
-                    - consumption_multipliers[tier] & self.sys_wide_consumption[item, t, tier]
+                        production_multipliers[tier] * self.sys_wide_production[item, t, tier]
+                        - consumption_multipliers[tier] * self.sys_wide_consumption[item, t, tier]
                 )
                 for item in self.items for t in range(self.periods) for tier in range(3)
             )
@@ -181,34 +184,59 @@ for i in range(50):
     accounts.append(Account(f"Acc{i}"))
 
 task_db = [
-    # negative reward herblore training
     Task(
-        "Herblore training",
+        "Herblore training - atkpot",
         Skills(0, 0, 0),
         Skills(0, 15, 0),
-        -100, 10
+        {
+            item_ids.ATTACK_POTION3: 4500,
+        },
+        {
+            item_ids.GRIMY_GUAM_LEAF: 4500,
+            item_ids.VIAL_OF_WATER: 4500,
+            item_ids.EYE_OF_NEWT: 4500,
+        }
     ),
-    # extremely high return high level
     Task(
-        "Mixology",
+        "Herblore training - strpot",
+        Skills(0, 0, 0),
+        Skills(0, 30, 0),
+        {
+            item_ids.STRENGTH_POTION3: 4500,
+        },
+        {
+            item_ids.GRIMY_TARROMIN: 4500,
+            item_ids.VIAL_OF_WATER: 4500,
+            item_ids.LIMPWURT_ROOT: 4500,
+        }
+    ),
+    Task(
+        "mixology - barrel",
         Skills(0, 60, 0),
-        Skills(0, 0, 0),
-        100_000, 12
+        Skills(0, 20, 0),
+        {
+            item_ids.CHUGGING_BARREL_DISASSEMBLED: 0.2,
+        },
+        {
+            # idk what the actual consumption is
+            item_ids.GRIMY_TARROMIN: 100,
+            item_ids.GRIMY_HARRALANDER: 100,
+        }
     ),
-    # mining training
     Task(
-        "Mining lowlvl",
-        Skills(0, 0, 0),
-        Skills(1, 0, 0),
-        0, 100_000
+        "mixology - Aldrium ",
+        Skills(0, 60, 0),
+        Skills(0, 20, 0),
+        {
+            item_ids.ALDARIUM: 10,
+        },
+        {
+            # idk what the actual consumption is
+            # in reality it'd be a fraction of all herbs because the script would buy the cheapest at runtime
+            item_ids.GRIMY_TARROMIN: 100,
+            item_ids.GRIMY_HARRALANDER: 100,
+        }
     ),
-    # higher lvl
-    Task(
-        "Mining highlvl",
-        Skills(10, 0, 0),
-        Skills(1, 0, 0),
-        1, 100_000
-    )
 ]
 
 model = MultiPeriodAssignmentModel(24, accounts, task_db)

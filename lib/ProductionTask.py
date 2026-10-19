@@ -3,7 +3,9 @@ from lib.Skills import Skills
 
 # General task rather than objective task distinction i was making in the simple assignment
 class Task:
-    def __init__(self, name, skill_requirements, skill_rewards, max_accounts, production, consumption, required_team_size=0):
+    def __init__(self, name, skill_requirements, skill_rewards, production, consumption,
+                 max_accounts=1_000_000,
+                 required_team_size=0):
         if not isinstance(skill_requirements, Skills):
             raise TypeError("Provided skill requirements is not of type Skills")
         if not isinstance(skill_rewards, Skills):
@@ -15,7 +17,6 @@ class Task:
 
         # experience gained
         self.skill_rewards = skill_rewards
-
 
         self.max_accounts = max_accounts
         # for team bosses that require X teammates, huey, soulwars, mole(special technique)
