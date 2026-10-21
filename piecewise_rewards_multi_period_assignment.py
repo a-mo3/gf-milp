@@ -43,15 +43,13 @@ class MultiPeriodAssignmentModel:
         self.lp = LivePrices()
         for item_id in self.items:
             vol = self.lp.get_volume(item_id)
-            print(f"Item {item_id} volume: {vol} ({vol/24}) price: {self.lp.get_low_price(item_id)}")
+            print(f"Item {item_id} volume: {vol} ({vol / 24}) price: {self.lp.get_low_price(item_id)}")
             # div 24 because 1 period is 1 hour in our model and lookup is 24h
             self.volumes[item_id] = vol / 24
 
         self.sys_wide_net = {}
         self.sys_wide_production = {}
         self.sys_wide_consumption = {}
-
-
 
         # eligibility decisions
         for w in range(len(self.workforce)):
@@ -163,6 +161,22 @@ class MultiPeriodAssignmentModel:
                     - self.solver.Sum(self.sys_wide_consumption[item, t, tier] for tier in range(3))
                 )
 
+        # used account var for initial costs
+        self.account_used = {}
+        for w in range(len(self.workforce)):
+            used = self.solver.IntVar(0, 1, f"acc_used_{w}")
+            self.account_used[w] = used
+
+            assignments = [
+                self.task_assignments[w, j, t]
+                for j in range(len(self.tasks))
+                for t in range(self.periods)
+            ]
+
+            for assignment in assignments:
+                self.solver.Add(assignment <= used)
+            self.solver.Add(used <= self.solver.Sum(assignments))
+
         # objective function
         self.solver.Maximize(
             self.solver.Sum(
@@ -171,6 +185,10 @@ class MultiPeriodAssignmentModel:
                         - consumption_multipliers[tier] * self.sys_wide_consumption[item, t, tier]
                 )
                 for item in self.items for t in range(self.periods) for tier in range(3)
+            )
+            - self.solver.Sum(
+                self.account_used[w] * self.workforce[w].startup_cost
+                for w in range(len(self.workforce))
             )
         )
 
@@ -239,7 +257,7 @@ task_db = [
     ),
 ]
 
-model = MultiPeriodAssignmentModel(24, accounts, task_db)
+model = MultiPeriodAssignmentModel(72, accounts, task_db)
 solv = model.get_solver()
 print("Variables:", solv.NumVariables())
 print("Constraints:", solv.NumConstraints())
